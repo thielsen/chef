@@ -162,7 +162,6 @@ describe Chef::Client do
     shared_examples_for "a successful client run" do
       include_context "a client run"
       include_context "converge completed"
-      include_context "audit phase completed"
 
       include_examples "a completed run"
     end
@@ -242,52 +241,11 @@ describe Chef::Client do
     describe "when converge completes successfully" do
       include_context "a client run"
       include_context "converge completed"
-      context "when audit mode is enabled" do
-        describe "when audit phase errors" do
-          include_context "audit phase failed with error"
-          include_examples "a completed run with audit failure" do
-            let(:run_errors) { [audit_error] }
-          end
-        end
-
-        describe "when audit phase completed" do
-          include_context "audit phase completed"
-          include_examples "a completed run"
-        end
-
-        describe "when audit phase completed with failed controls" do
-          include_context "audit phase completed with failed controls"
-          include_examples "a completed run with audit failure" do
-            let(:run_errors) { [audit_error] }
-          end
-        end
-      end
     end
 
     describe "when converge errors" do
       include_context "a client run"
       include_context "converge failed"
-
-      describe "when audit phase errors" do
-        include_context "audit phase failed with error"
-        include_examples "a failed run" do
-          let(:run_errors) { [converge_error, audit_error] }
-        end
-      end
-
-      describe "when audit phase completed" do
-        include_context "audit phase completed"
-        include_examples "a failed run" do
-          let(:run_errors) { [converge_error] }
-        end
-      end
-
-      describe "when audit phase completed with failed controls" do
-        include_context "audit phase completed with failed controls"
-        include_examples "a failed run" do
-          let(:run_errors) { [converge_error, audit_error] }
-        end
-      end
     end
   end
 
@@ -567,29 +525,6 @@ EOM
     before do
       # fail on the first thing in begin block
       allow_any_instance_of(Chef::RunLock).to receive(:save_pid).and_raise(NoMethodError)
-    end
-
-    context "when audit mode is enabled" do
-      before do
-        Chef::Config[:audit_mode] = :enabled
-      end
-      it "should run exception handlers on early fail" do
-        expect(subject).to receive(:run_failed)
-        expect { subject.run }.to raise_error(Chef::Exceptions::RunFailedWrappingError) do |error|
-          expect(error.wrapped_errors.size).to eq 1
-          expect(error.wrapped_errors).to include(NoMethodError)
-        end
-      end
-    end
-
-    context "when audit mode is disabled" do
-      before do
-        Chef::Config[:audit_mode] = :disabled
-      end
-      it "should run exception handlers on early fail" do
-        expect(subject).to receive(:run_failed)
-        expect { subject.run }.to raise_error(NoMethodError)
-      end
     end
   end
 end

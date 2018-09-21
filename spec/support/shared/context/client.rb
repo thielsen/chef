@@ -79,8 +79,7 @@ shared_context "a client run" do
   let(:http_node_save)        { double("Chef::ServerAPI (node save)") }
   let(:reporting_rest_client) { double("Chef::ServerAPI (reporting client)") }
 
-  let(:runner)       { instance_double("Chef::Runner") }
-  let(:audit_runner) { instance_double("Chef::Audit::Runner", failed?: false) }
+  let(:runner) { instance_double("Chef::Runner") }
 
   def stub_for_register
     # --Client.register
@@ -150,10 +149,6 @@ shared_context "a client run" do
     # define me
   end
 
-  def stub_for_audit
-    # define me
-  end
-
   def stub_for_node_save
     # define me
   end
@@ -166,7 +161,6 @@ shared_context "a client run" do
     Chef::Config[:client_fork] = enable_fork
     Chef::Config[:cache_path] = windows? ? 'C:\chef' : "/var/chef"
     Chef::Config[:why_run] = false
-    Chef::Config[:audit_mode] = :enabled
     Chef::Config[:chef_guid] = "default-guid"
 
     stub_rest_clean
@@ -176,7 +170,6 @@ shared_context "a client run" do
     stub_for_sync_cookbooks
     stub_for_required_recipe
     stub_for_converge
-    stub_for_audit
     stub_for_node_save
 
     expect_any_instance_of(Chef::RunLock).to receive(:acquire)
@@ -224,52 +217,6 @@ shared_context "converge failed" do
   end
 end
 
-shared_context "audit phase completed" do
-  def stub_for_audit
-    # -- Client#run_audits
-    expect(Chef::Audit::Runner).to receive(:new).and_return(audit_runner)
-    expect(audit_runner).to receive(:run).and_return(true)
-    expect(client.events).to receive(:audit_phase_complete)
-  end
-end
-
-shared_context "audit phase failed with error" do
-  let(:audit_error) do
-    err = RuntimeError.new("Unexpected audit error")
-    err.set_backtrace([ "/path/recipe.rb:57", "/path/recipe.rb:55" ])
-    err
-  end
-
-  def stub_for_audit
-    expect(Chef::Audit::Runner).to receive(:new).and_return(audit_runner)
-    expect(Chef::Audit::Logger).to receive(:read_buffer).and_return("Audit mode output!")
-    expect(audit_runner).to receive(:run).and_raise(audit_error)
-    expect(client.events).to receive(:audit_phase_failed).with(audit_error, "Audit mode output!")
-  end
-end
-
-shared_context "audit phase completed with failed controls" do
-  let(:audit_runner) do
-    instance_double("Chef::Audit::Runner", failed?: true,
-                                           num_failed: 1, num_total: 3) end
-
-  let(:audit_error) do
-    err = Chef::Exceptions::AuditsFailed.new(audit_runner.num_failed, audit_runner.num_total)
-    err.set_backtrace([ "/path/recipe.rb:108", "/path/recipe.rb:103" ])
-    err
-  end
-
-  def stub_for_audit
-    expect(Chef::Audit::Runner).to receive(:new).and_return(audit_runner)
-    expect(Chef::Audit::Logger).to receive(:read_buffer).and_return("Audit mode output!")
-    expect(audit_runner).to receive(:run)
-    expect(Chef::Exceptions::AuditsFailed).to receive(:new).with(
-      audit_runner.num_failed, audit_runner.num_total
-    ).and_return(audit_error)
-    expect(client.events).to receive(:audit_phase_failed).with(audit_error, "Audit mode output!")
-  end
-end
-
 shared_context "run completed" do
   def stub_for_run
     expect(client).to receive(:run_completed_successfully)
@@ -278,10 +225,6 @@ shared_context "run completed" do
     #   updates the server with the resource history
     #   (has its own tests, so stubbing it here.)
     expect_any_instance_of(Chef::ResourceReporter).to receive(:run_completed)
-    # --AuditReporter#run_completed
-    #   posts the audit data to server.
-    #   (has its own tests, so stubbing it here.)
-    expect_any_instance_of(Chef::Audit::AuditReporter).to receive(:run_completed)
   end
 end
 
@@ -293,10 +236,6 @@ shared_context "run failed" do
     #   updates the server with the resource history
     #   (has its own tests, so stubbing it here.)
     expect_any_instance_of(Chef::ResourceReporter).to receive(:run_failed)
-    # --AuditReporter#run_completed
-    #   posts the audit data to server.
-    #   (has its own tests, so stubbing it here.)
-    expect_any_instance_of(Chef::Audit::AuditReporter).to receive(:run_failed)
   end
 
   before do
