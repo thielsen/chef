@@ -45,6 +45,7 @@ require "chef/formatters/base"
 require "chef/formatters/doc"
 require "chef/formatters/minimal"
 require "chef/version"
+require "chef/action_collection"
 require "chef/resource_reporter"
 require "chef/data_collector"
 require "chef/audit/audit_reporter"
@@ -279,6 +280,7 @@ class Chef
         Chef.provider_handler_map.lock!
 
         run_context = setup_run_context
+        register_action_collection(run_context)
 
         load_required_recipe(@rest, run_context) unless Chef::Config[:solo_legacy_mode]
 
@@ -420,6 +422,10 @@ class Chef
       ].each do |r|
         events.register(r)
       end
+    end
+
+    def register_action_collection(run_context)
+      events.register(Chef::ActionCollection.new(run_context))
     end
 
     #
