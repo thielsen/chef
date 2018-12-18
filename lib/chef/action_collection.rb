@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-require "uri"
-require "securerandom"
 require "chef/event_dispatch/base"
 
 class Chef
