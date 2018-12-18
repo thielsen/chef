@@ -1,9 +1,5 @@
 #
-# Author:: Daniel DeLeo (<dan@chef.io>)
-# Author:: Prajakta Purohit (prajakta@chef.io>)
-# Auther:: Tyler Cloke (<tyler@opscode.com>)
-#
-# Copyright:: Copyright 2012-2018, Chef Software Inc.
+# Copyright:: Copyright 2018-2018, Chef Software Inc.
 # License:: Apache License, Version 2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
