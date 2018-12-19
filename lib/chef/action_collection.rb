@@ -123,7 +123,7 @@ class Chef
       # we fire the action_collection_registration event during the converge_start hook -- the magic of stack
       # frames means this should just work.  but maybe we need a way to schedule an event on the dispatcher to run
       # after the current one has completed?
-      run_context.events.action_collection_registration(self)
+      run_context.events.enqueue(:action_collection_registration, self)
       @run_context = run_context
     end
 
