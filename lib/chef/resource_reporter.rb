@@ -30,14 +30,14 @@ class Chef
       current_resource = action_record.current_resource
 
       as_hash = {}
-      as_hash["type"]   = new_resource.resource_name.to_sym
-      as_hash["name"]   = new_resource.name.to_s
-      as_hash["id"]     = new_resource.identity.to_s
-      as_hash["after"]  = new_resource.state_for_resource_reporter
-      as_hash["before"] = current_resource ? current_resource.state_for_resource_reporter : {}
-      as_hash["duration"] = (new_resource.elapsed_time * 1000).to_i.to_s
-      as_hash["delta"]  = new_resource.diff if new_resource.respond_to?("diff")
-      as_hash["delta"]  = "" if as_hash["delta"].nil?
+      as_hash["type"]     = new_resource.resource_name.to_sym
+      as_hash["name"]     = new_resource.name.to_s
+      as_hash["id"]       = new_resource.identity.to_s
+      as_hash["after"]    = new_resource.state_for_resource_reporter
+      as_hash["before"]   = current_resource ? current_resource.state_for_resource_reporter : {}
+      as_hash["duration"] = ( action_record.elapsed_time * 1000 ).to_i
+      as_hash["delta"]    = new_resource.diff if new_resource.respond_to?("diff")
+      as_hash["delta"]    = "" if as_hash["delta"].nil?
 
       # TODO: rename as "action"
       as_hash["result"] = action_record.action.to_s
@@ -52,6 +52,7 @@ class Chef
     attr_reader :status
     attr_reader :exception
     attr_reader :error_descriptions
+    attr_reader :run_context
 
     PROTOCOL_VERSION = "0.1.0".freeze
 
@@ -133,6 +134,10 @@ class Chef
       @expanded_run_list = run_list_expansion
     end
 
+    def converge_start(run_context)
+      @run_context = run_context
+    end
+
     def post_reporting_data
       if reporting_enabled?
         run_data = prepare_run_data
@@ -175,12 +180,12 @@ class Chef
     end
 
     def action_collection
-      Chef.run_context.action_collection
+      run_context.action_collection
     end
 
     # get only the top level resources and strip out the subcollections
     def updated_resources
-      @updated_resources ||= Chef.run_context.action_collection.filtered_collection(max_nesting: 0).updated_resources
+      @updated_resources ||= run_context.action_collection.filtered_collection(max_nesting: 0, up_to_date: false, skipped: false, unprocessed: false)
     end
 
     def total_res_count

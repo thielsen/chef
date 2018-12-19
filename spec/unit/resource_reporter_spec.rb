@@ -58,7 +58,7 @@ describe Chef::ResourceReporter do
 
   let(:cookbook_version) { double("Cookbook::Version", version: "1.2.3") }
 
-  let(:action_collection) { Chef::ActionCollection.new(run_context) }
+  let(:action_collection) { Chef::ActionCollection.new }
 
   before do
     node.name("spitfire")
@@ -67,12 +67,9 @@ describe Chef::ResourceReporter do
     allow(new_resource).to receive(:cookbook_version).and_return(cookbook_version)
     run_list << "recipe[lobster]" << "role[rage]" << "recipe[fist]"
     allow(Time).to receive(:now).and_return(start_time, end_time)
-    Chef.set_run_context(run_context)
     events.register(action_collection)
-  end
-
-  after do
-    Chef.set_run_context(nil)
+    action_collection.converge_start(run_context)
+    resource_reporter.converge_start(run_context)
   end
 
   context "when first created" do
@@ -160,7 +157,20 @@ describe Chef::ResourceReporter do
 
       context "and the resource was not updated" do
         before do
-          resource_reporter.resource_up_to_date(new_resource, :create)
+          action_collection.resource_up_to_date(new_resource, :create)
+          action_collection.resource_completed(new_resource)
+        end
+
+        it "has no updated resources" do
+          expect(resource_reporter.updated_resources.size).to eq(0)
+        end
+      end
+
+      context "and the resource was skipped" do
+        before do
+          conditional = nil
+          action_collection.resource_skipped(new_resource, :create, conditional)
+          action_collection.resource_completed(new_resource)
         end
 
         it "has no updated resources" do
@@ -196,6 +206,7 @@ describe Chef::ResourceReporter do
           before do
             exception = Exception.new
             exception.set_backtrace(caller)
+            action_collection.resource_action_start(next_new_resource, :create)
             action_collection.resource_failed(next_new_resource, :create, exception)
             action_collection.resource_completed(next_new_resource)
           end

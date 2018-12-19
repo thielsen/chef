@@ -160,83 +160,6 @@ class Chef
         @run_context = run_context
       end
 
-      # see EventDispatch::Base#converge_complete
-      # At the end of the converge, we add any unprocessed resources
-      # to our report list.
-      def converge_complete
-        detect_unprocessed_resources
-      end
-
-      # see EventDispatch::Base#converge_failed
-      # At the end of the converge, we add any unprocessed resources
-      # to our report list
-      def converge_failed(exception)
-        detect_unprocessed_resources
-      end
-
-      # see EventDispatch::Base#resource_current_state_loaded
-      # Create a new ResourceReport instance that we'll use to track
-      # the state of this resource during the run. Nested resources are
-      # ignored as they are assumed to be an inline resource of a custom
-      # resource, and we only care about tracking top-level resources.
-      def resource_current_state_loaded(new_resource, action, current_resource)
-        return if nested_resource?(new_resource)
-        initialize_resource_report_if_needed(new_resource, action, current_resource)
-      end
-
-      # see EventDispatch::Base#resource_up_to_date
-      # Mark our ResourceReport status accordingly
-      def resource_up_to_date(new_resource, action)
-        initialize_resource_report_if_needed(new_resource, action)
-        current_resource_report.up_to_date unless nested_resource?(new_resource)
-      end
-
-      # see EventDispatch::Base#resource_skipped
-      # If this is a top-level resource, we create a ResourceReport
-      # instance (because a skipped resource does not trigger the
-      # resource_current_state_loaded event), and flag it as skipped.
-      def resource_skipped(new_resource, action, conditional)
-        return if nested_resource?(new_resource)
-
-        initialize_resource_report_if_needed(new_resource, action)
-        current_resource_report.skipped(conditional)
-      end
-
-      # see EventDispatch::Base#resource_updated
-      # Flag the current ResourceReport instance as updated (as long as it's
-      # a top-level resource).
-      def resource_updated(new_resource, action)
-        initialize_resource_report_if_needed(new_resource, action)
-        current_resource_report.updated unless nested_resource?(new_resource)
-      end
-
-      # see EventDispatch::Base#resource_failed
-      # Flag the current ResourceReport as failed and supply the exception as
-      # long as it's a top-level resource, and update the run error text
-      # with the proper Formatter.
-      def resource_failed(new_resource, action, exception)
-        initialize_resource_report_if_needed(new_resource, action)
-        current_resource_report.failed(exception) unless nested_resource?(new_resource)
-        update_error_description(
-          Formatters::ErrorMapper.resource_failed(
-            new_resource,
-            action,
-            exception
-          ).for_json
-        )
-      end
-
-      # see EventDispatch::Base#resource_completed
-      # Mark the ResourceReport instance as finished (for timing details).
-      # This marks the end of this resource during this run.
-      def resource_completed(new_resource)
-        if current_resource_report && !nested_resource?(new_resource)
-          current_resource_report.finish
-          add_resource_report(current_resource_report)
-          clear_current_resource_report
-        end
-      end
-
       # see EventDispatch::Base#run_list_expanded
       # The expanded run list is stored for later use by the run_completed
       # event and message.
@@ -467,45 +390,6 @@ class Chef
 
       def clear_current_resource_report
         @current_resource_report = nil
-      end
-
-      def detect_unprocessed_resources
-        # create a Hash (for performance reasons, rather than an Array) containing all
-        # resource+action combinations from the Resource Collection
-        #
-        # We use the object ID instead of the resource itself in the Hash key because
-        # we currently allow users to create a property called "hash" which creates
-        # a #hash instance method on the resource. Ruby expects that to be a Fixnum,
-        # so bad things happen when adding an object to an Array or a Hash if it's not.
-        collection_resources = {}
-        run_context.resource_collection.all_resources.each do |resource|
-          Array(resource.action).each do |action|
-            collection_resources[[resource.__id__, action]] = resource
-          end
-        end
-
-        # Delete from the Hash any resource+action combination we have
-        # already processed.
-        all_resource_reports.each do |report|
-          collection_resources.delete([report.resource.__id__, report.action])
-        end
-
-        # The items remaining in the Hash are unprocessed resource+actions,
-        # so we'll create new resource reports for them which default to
-        # a state of "unprocessed".
-        collection_resources.each do |key, resource|
-          # The Hash key is an array of the Resource's object ID and the action.
-          # We need to pluck out the action.
-          add_resource_report(create_resource_report(resource, key[1]))
-        end
-      end
-
-      # If we are getting messages about a resource while we are in the middle of
-      # another resource's update, we assume that the nested resource is just the
-      # implementation of a provider, and we want to hide it from the reporting
-      # output.
-      def nested_resource?(new_resource)
-        @current_resource_report && @current_resource_report.new_resource != new_resource
       end
 
       def validate_and_return_uri(uri)

@@ -21,31 +21,54 @@ class Chef
   class ActionCollection < EventDispatch::Base
     include Enumerable
 
-    ActionReport = Struct.new(:new_resource,
-                                :current_resource,
-                                :action,
-                                :exception,
-                                :elapsed_time,
-                                :nesting_level) do
+    class ActionReport
 
-      def self.new_with_current_state(new_resource, action, current_resource)
-        report = new
-        report.new_resource = new_resource
-        report.action = action
-        report.current_resource = current_resource
-        report
-      end
+      # The "new_resource" or declared state that we (ab)use for the after-state since
+      # we have no explicit after_resource.  XXX: this object may be mutated by the
+      # user and the state may change and result in buggy output.
+      #
+      attr_accessor :new_resource
 
-      def self.new_for_exception(new_resource, action, exception)
-        report = new
-        report.new_resource = new_resource
-        report.action = action
-        report.exception = exception
-        report
-      end
+      # The loaded current_resource (before-state).  This can be nil in the case of
+      # non-why-run-safe resources in why-run mode, or in the case where
+      # load_current_resource threw an exception (which is bad practice, but happens).
+      #
+      attr_accessor :current_resource
 
-      def finish
-        self.elapsed_time = new_resource.elapsed_time
+      # The action that was run (or scheduled to run in the case of "unprocessed" resources).
+      #
+      attr_accessor :action
+
+      # The exception was thrown, nil if no exception
+      #
+      attr_accessor :exception
+
+      # The elapsed time in seconds with machine precision
+      #
+      attr_accessor :elapsed_time
+
+      # The conditional that caused the resource to be skipped
+      #
+      attr_accessor :conditional
+
+      # The status of the resource:
+      #   updated:     ran and converged
+      #   up_to_date:  skipped due to idempotency
+      #   skipped:     skipped due to a conditional
+      #   failed:      failed with an exception
+      #   unprocessed: resources that were not touched by a run that failed
+      #
+      attr_accessor :status
+
+      # The "nesting" level.  Outer resources in recipe context are 0 here, while for every
+      # sub-resource_collection inside of a custom resource this number is incremented by 1.
+      #
+      attr_accessor :nesting_level
+
+      def initialize(new_resource, action, nesting_level)
+        @new_resource = new_resource
+        @action = action
+        @nesting_level = nesting_level
       end
 
       def success?
@@ -61,67 +84,77 @@ class Chef
     attr_reader :exception
     attr_reader :error_descriptions
     attr_reader :run_status
+    attr_reader :run_context
 
-    def initialize(run_context)
+    def initialize
       @updated_resources  = []
       @total_res_count    = 0
       @status             = "success"
       @error_descriptions = {}
       @expanded_run_list  = {}
       @pending_updates    = []
-
-      run_context.action_collection = self
     end
 
     def each(&block)
       updated_resources.each(&block)
     end
 
-    # mildly janky:  this is a factory method to create a dup of the action_collection
-    # filtered by the nesting level -- used to get an action_collection of only the
-    # top level resources.  bypasses issues like Enumerable not having a #size method and
-    # Enumerator not have a #last method.  keeps the filtering logic in this class, but
-    # allows callers to get at the real actual updated_resources array.  thanks, ruby.
+    # allows getting at the updated_resources collection filtered by nesting level and status
     #
-    def filtered_collection(max_nesting: 0)
-      collection = dup
-      collection.updated_resources.select! { |i| i.nesting_level <= max_nesting }
-      collection
+    def filtered_collection(max_nesting: 0, up_to_date: true, skipped: true, updated: true, failed: true, unprocessed: true)
+      updated_resources.select do |rec|
+        rec.nesting_level <= max_nesting &&
+          ( rec.status == :up_to_date && up_to_date ||
+            rec.status == :skipped && skipped ||
+            rec.status == :updated && updated ||
+            rec.status == :failed && failed ||
+            rec.status == :unprocessed && unprocessed )
+      end
     end
 
     def run_started(run_status)
       @run_status = run_status
     end
 
+    def converge_start(run_context)
+      run_context.action_collection = self
+      @run_context = run_context
+    end
+
+    def converge_complete
+      detect_unprocessed_resources
+    end
+
+    def converge_failed(exception)
+      detect_unprocessed_resources
+    end
+
+    def resource_action_start(new_resource, action, notification_type = nil, notifier = nil)
+      pending_updates << ActionReport.new(new_resource, action, pending_updates.length)
+    end
+
     def resource_current_state_loaded(new_resource, action, current_resource)
-      pending_updates.push(ActionReport.new_with_current_state(new_resource, action, current_resource))
+      current_record.current_resource = current_resource
     end
 
     def resource_up_to_date(new_resource, action)
-      pending_updates.pop
-      @pending_update = nil
+      current_record.status = :up_to_date
       @total_res_count += 1
     end
 
     def resource_skipped(resource, action, conditional)
-      pending_updates.pop
-      @pending_update = nil
+      current_record.status = :skipped
       @total_res_count += 1
     end
 
     def resource_updated(new_resource, action)
-      @pending_update = pending_updates.pop
+      current_record.status = :updated
       @total_res_count += 1
     end
 
     def resource_failed(new_resource, action, exception)
-      if !pending_updates.empty? && pending_updates.last.new_resource == new_resource
-        # we failed after loading the current_resource
-        @pending_update = pending_updates.pop
-      else
-        # we failed before loading the current_resource
-        @pending_update = ActionReport.new_for_exception(new_resource, action, exception)
-      end
+      current_record.status = :failed
+      current_record.exception = exception
 
       description = Formatters::ErrorMapper.resource_failed(new_resource, action, exception)
       @error_descriptions = description.for_json
@@ -129,23 +162,19 @@ class Chef
     end
 
     def resource_completed(new_resource)
-      if @pending_update
-        @pending_update.finish
+      current_record.elapsed_time = new_resource.elapsed_time
 
-        # Verify if the resource has sensitive data
-        # and create a new blank resource with only
-        # the name so we can report it back without
-        # sensitive data
-        if @pending_update.new_resource.sensitive
-          klass = @pending_update.new_resource.class
-          resource_name = @pending_update.new_resource.name
-          @pending_update.new_resource = klass.new(resource_name)
-        end
-
-        @pending_update.nesting_level = pending_updates.length
-
-        updated_resources << @pending_update
+      # Verify if the resource has sensitive data and create a new blank resource with only
+      # the name so we can report it back without sensitive data
+      # XXX?: what about sensitive data in the current_resource?
+      # FIXME: this needs to be display-logic
+      if current_record.new_resource.sensitive
+        klass = current_record.new_resource.class
+        resource_name = current_record.new_resource.name
+        current_record.new_resource = klass.new(resource_name)
       end
+
+      updated_resources << pending_updates.pop
     end
 
     def run_completed(node)
@@ -159,18 +188,6 @@ class Chef
 
     def run_list_expanded(run_list_expansion)
       @expanded_run_list = run_list_expansion
-    end
-
-    def node_name
-      run_status.node.name
-    end
-
-    def start_time
-      run_status.start_time
-    end
-
-    def end_time
-      run_status.end_time
     end
 
     def run_list_expand_failed(node, exception)
@@ -190,8 +207,30 @@ class Chef
 
     private
 
-    def action_tracking_enabled?
-      Chef::Config[:enable_reporting] && !Chef::Config[:why_run]
+    # This is the current record we are working on at the top of the "pending_updates" stack.
+    #
+    def current_record
+      pending_updates[-1]
+    end
+
+    # If the chef-client run fails in the middle, we are left with a half-completed resource_collection, this
+    # method is responsible for adding all of the resources which have not yet been touched.  They are marked
+    # as being "unprocessed".
+    #
+    def detect_unprocessed_resources
+      raise "FEEX ME"
+    end
+
+    def node_name
+      run_status.node.name
+    end
+
+    def start_time
+      run_status.start_time
+    end
+
+    def end_time
+      run_status.end_time
     end
   end
 end

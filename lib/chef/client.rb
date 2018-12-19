@@ -280,7 +280,6 @@ class Chef
         Chef.provider_handler_map.lock!
 
         run_context = setup_run_context
-        register_action_collection(run_context)
 
         load_required_recipe(@rest, run_context) unless Chef::Config[:solo_legacy_mode]
 
@@ -417,15 +416,12 @@ class Chef
     # @api private
     def register_reporters
       [
+        Chef::ActionCollection.new,
         Chef::ResourceReporter.new(rest_clean),
         Chef::Audit::AuditReporter.new(rest_clean),
       ].each do |r|
         events.register(r)
       end
-    end
-
-    def register_action_collection(run_context)
-      events.register(Chef::ActionCollection.new(run_context))
     end
 
     #
