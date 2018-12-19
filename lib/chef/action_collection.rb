@@ -85,6 +85,7 @@ class Chef
     attr_reader :error_descriptions
     attr_reader :run_status
     attr_reader :run_context
+    attr_reader :consumers
 
     def initialize
       @updated_resources  = []
@@ -93,6 +94,7 @@ class Chef
       @error_descriptions = {}
       @expanded_run_list  = {}
       @pending_updates    = []
+      @consumers          = []
     end
 
     def each(&block)
@@ -118,41 +120,60 @@ class Chef
 
     def converge_start(run_context)
       run_context.action_collection = self
+      # we fire the action_collection_registration event during the converge_start hook -- the magic of stack
+      # frames means this should just work.  but maybe we need a way to schedule an event on the dispatcher to run
+      # after the current one has completed?
+      run_context.events.action_collection_registration(self)
       @run_context = run_context
     end
 
+    # Consumers must call register -- either directly or through the action_collection_registration hook.  If
+    # nobody has registered any interest, then no action tracking will be done.
+    #
+    def register(object)
+      consumers << object
+    end
+
     def converge_complete
+      return if consumers.empty?
       detect_unprocessed_resources
     end
 
     def converge_failed(exception)
+      return if consumers.empty?
       detect_unprocessed_resources
     end
 
     def resource_action_start(new_resource, action, notification_type = nil, notifier = nil)
+      return if consumers.empty?
       pending_updates << ActionReport.new(new_resource, action, pending_updates.length)
     end
 
     def resource_current_state_loaded(new_resource, action, current_resource)
+      return if consumers.empty?
       current_record.current_resource = current_resource
     end
 
     def resource_up_to_date(new_resource, action)
+      return if consumers.empty?
       current_record.status = :up_to_date
       @total_res_count += 1
     end
 
     def resource_skipped(resource, action, conditional)
+      return if consumers.empty?
       current_record.status = :skipped
       @total_res_count += 1
     end
 
     def resource_updated(new_resource, action)
+      return if consumers.empty?
       current_record.status = :updated
       @total_res_count += 1
     end
 
     def resource_failed(new_resource, action, exception)
+      return if consumers.empty?
       current_record.status = :failed
       current_record.exception = exception
 
@@ -162,6 +183,7 @@ class Chef
     end
 
     def resource_completed(new_resource)
+      return if consumers.empty?
       current_record.elapsed_time = new_resource.elapsed_time
 
       # Verify if the resource has sensitive data and create a new blank resource with only

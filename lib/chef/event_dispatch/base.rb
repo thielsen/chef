@@ -267,6 +267,10 @@ class Chef
       def converge_start(run_context)
       end
 
+      # Callback hook for handlers to register their interest in the action_collection
+      def action_collection_registration(action_collection)
+      end
+
       # Called when the converge phase is finished.
       def converge_complete
       end

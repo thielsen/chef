@@ -160,6 +160,10 @@ class Chef
         @run_context = run_context
       end
 
+      def action_collection_registration(action_collection)
+        action_collection.register(self) # FIXME: if self.class.register_reporter?
+      end
+
       # see EventDispatch::Base#run_list_expanded
       # The expanded run list is stored for later use by the run_completed
       # event and message.
