@@ -439,13 +439,6 @@ describe Chef::DataCollector::Reporter do
     end
   end
 
-  describe "#converge_start" do
-    it "stashes the run_context for later use" do
-      reporter.converge_start("test_context")
-      expect(reporter.run_context).to eq("test_context")
-    end
-  end
-
   describe "#run_list_expanded" do
     it "sets the expanded run list" do
       reporter.run_list_expanded("test_run_list")

@@ -105,7 +105,7 @@ class Chef
           end
         end
 
-        events.cookbook_compilation_finish(run_context)
+        events.cookbook_compilation_complete(run_context)
 
         run_context
       end
