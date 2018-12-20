@@ -70,6 +70,7 @@ describe Chef::ResourceReporter do
     events.register(action_collection)
     action_collection.converge_start(run_context)
     resource_reporter.converge_start(run_context)
+    action_collection.register(resource_reporter)
   end
 
   context "when first created" do

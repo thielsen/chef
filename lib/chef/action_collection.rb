@@ -240,7 +240,7 @@ class Chef
     # as being "unprocessed".
     #
     def detect_unprocessed_resources
-      raise "FEEX ME"
+      # raise "FEEX ME"
     end
 
     def node_name

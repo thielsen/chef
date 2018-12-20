@@ -41,9 +41,8 @@ class Chef
         process_events_until_done
       end
 
-      private
-
       # Check to see if we are dispatching to a formatter
+      # @api private
       def formatter?
         subscribers.any? { |s| s.respond_to?(:is_formatter?) && s.is_formatter? }
       end
@@ -53,6 +52,7 @@ class Chef
       # define the forwarding in one go:
       #
 
+      # @api private
       def call_subscribers(method_name, *args)
         subscribers.each do |s|
           # Skip new/unsupported event names
@@ -67,6 +67,8 @@ class Chef
           end
         end
       end
+
+      private
 
       # events are allowed to enqueue chained events, so pop them off until
       # empty, rather than iterating over the list.
