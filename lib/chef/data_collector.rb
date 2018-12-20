@@ -103,7 +103,7 @@ class Chef
     # endpoint.
     class Reporter < EventDispatch::Base
       attr_reader :all_resource_reports, :status, :exception, :error_descriptions,
-                  :expanded_run_list, :run_context, :run_status, :http,
+                  :expanded_run_list, :run_status, :http,
                   :current_resource_report, :enabled, :deprecations
 
       def initialize
@@ -149,15 +149,6 @@ class Chef
       # see EventDispatch::Base#run_failed
       def run_failed(exception)
         send_run_completion(status: "failure")
-      end
-
-      # see EventDispatch::Base#converge_start
-      # Upon receipt, we stash the run_context for use at the
-      # end of the run in order to determine what resource+action
-      # combinations have not yet fired so we can report on
-      # unprocessed resources.
-      def converge_start(run_context)
-        @run_context = run_context
       end
 
       def action_collection_registration(action_collection)

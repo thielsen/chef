@@ -52,7 +52,8 @@ class Chef
     attr_reader :status
     attr_reader :exception
     attr_reader :error_descriptions
-    attr_reader :run_context
+    attr_reader :action_collection
+    attr_reader :rest_client
 
     PROTOCOL_VERSION = "0.1.0".freeze
 
@@ -71,8 +72,8 @@ class Chef
       if reporting_enabled?
         begin
           resource_history_url = "reports/nodes/#{node_name}/runs"
-          server_response = @rest_client.post(resource_history_url, { action: :start, run_id: run_id,
-                                                                      start_time: start_time.to_s }, headers)
+          server_response = rest_client.post(resource_history_url, { action: :start, run_id: run_id,
+                                                                     start_time: start_time.to_s }, headers)
         rescue Timeout::Error, Errno::EINVAL, Errno::ECONNRESET, EOFError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError, Net::ProtocolError => e
           handle_error_starting_run(e, resource_history_url)
         end
@@ -134,11 +135,8 @@ class Chef
       @expanded_run_list = run_list_expansion
     end
 
-    def converge_start(run_context)
-      @run_context = run_context
-    end
-
     def action_collection_registration(action_collection)
+      @action_collection = action_collection
       action_collection.register(self) if reporting_enabled?
     end
 
@@ -152,7 +150,7 @@ class Chef
         Chef::Log.trace("Sending compressed run data...")
         # Since we're posting compressed data we can not directly call post which expects JSON
         begin
-          @rest_client.raw_request(:POST, resource_history_url, headers({ "Content-Encoding" => "gzip" }), compressed_data)
+          rest_client.raw_request(:POST, resource_history_url, headers({ "Content-Encoding" => "gzip" }), compressed_data)
         rescue StandardError => e
           if e.respond_to? :response
             Chef::FileCache.store("failed-reporting-data.json", Chef::JSONCompat.to_json_pretty(run_data), 0640)
@@ -183,13 +181,9 @@ class Chef
       @run_status.end_time
     end
 
-    def action_collection
-      run_context.action_collection
-    end
-
     # get only the top level resources and strip out the subcollections
     def updated_resources
-      @updated_resources ||= run_context.action_collection.filtered_collection(max_nesting: 0, up_to_date: false, skipped: false, unprocessed: false)
+      @updated_resources ||= action_collection.filtered_collection(max_nesting: 0, up_to_date: false, skipped: false, unprocessed: false)
     end
 
     def total_res_count

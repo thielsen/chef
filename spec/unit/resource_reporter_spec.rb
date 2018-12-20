@@ -68,9 +68,8 @@ describe Chef::ResourceReporter do
     run_list << "recipe[lobster]" << "role[rage]" << "recipe[fist]"
     allow(Time).to receive(:now).and_return(start_time, end_time)
     events.register(action_collection)
-    action_collection.converge_start(run_context)
-    resource_reporter.converge_start(run_context)
-    action_collection.register(resource_reporter)
+    events.register(resource_reporter)
+    events.cookbook_compilation_start(run_context)
   end
 
   context "when first created" do
@@ -132,9 +131,9 @@ describe Chef::ResourceReporter do
       before do
         exception = Exception.new
         exception.set_backtrace(caller)
-        action_collection.resource_action_start(new_resource, :create)
-        action_collection.resource_failed(new_resource, :create, exception)
-        action_collection.resource_completed(new_resource)
+        events.resource_action_start(new_resource, :create)
+        events.resource_failed(new_resource, :create, exception)
+        events.resource_completed(new_resource)
       end
 
       it "collects the resource as an updated resource" do
@@ -152,14 +151,14 @@ describe Chef::ResourceReporter do
 
     context "once the a resource's current state is loaded" do
       before do
-        action_collection.resource_action_start(new_resource, :create)
-        action_collection.resource_current_state_loaded(new_resource, :create, current_resource)
+        events.resource_action_start(new_resource, :create)
+        events.resource_current_state_loaded(new_resource, :create, current_resource)
       end
 
       context "and the resource was not updated" do
         before do
-          action_collection.resource_up_to_date(new_resource, :create)
-          action_collection.resource_completed(new_resource)
+          events.resource_up_to_date(new_resource, :create)
+          events.resource_completed(new_resource)
         end
 
         it "has no updated resources" do
@@ -170,8 +169,8 @@ describe Chef::ResourceReporter do
       context "and the resource was skipped" do
         before do
           conditional = nil
-          action_collection.resource_skipped(new_resource, :create, conditional)
-          action_collection.resource_completed(new_resource)
+          events.resource_skipped(new_resource, :create, conditional)
+          events.resource_completed(new_resource)
         end
 
         it "has no updated resources" do
@@ -183,8 +182,8 @@ describe Chef::ResourceReporter do
         before do
           new_resource.content("this is the old content")
           current_resource.content("this is the new hotness")
-          action_collection.resource_updated(new_resource, :create)
-          action_collection.resource_completed(new_resource)
+          events.resource_updated(new_resource, :create)
+          events.resource_completed(new_resource)
         end
 
         it "collects the updated resource" do
@@ -207,9 +206,9 @@ describe Chef::ResourceReporter do
           before do
             exception = Exception.new
             exception.set_backtrace(caller)
-            action_collection.resource_action_start(next_new_resource, :create)
-            action_collection.resource_failed(next_new_resource, :create, exception)
-            action_collection.resource_completed(next_new_resource)
+            events.resource_action_start(next_new_resource, :create)
+            events.resource_failed(next_new_resource, :create, exception)
+            events.resource_completed(next_new_resource)
           end
 
           it "collects the desired state of the failed resource" do
@@ -231,12 +230,12 @@ describe Chef::ResourceReporter do
       context "and a nested resource is updated" do
         before do
           implementation_resource = Chef::Resource::CookbookFile.new("/preseed-file.txt")
-          action_collection.resource_action_start(implementation_resource , :create)
-          action_collection.resource_current_state_loaded(implementation_resource, :create, implementation_resource)
-          action_collection.resource_updated(implementation_resource, :create)
-          action_collection.resource_completed(implementation_resource)
-          action_collection.resource_updated(new_resource, :create)
-          action_collection.resource_completed(new_resource)
+          events.resource_action_start(implementation_resource , :create)
+          events.resource_current_state_loaded(implementation_resource, :create, implementation_resource)
+          events.resource_updated(implementation_resource, :create)
+          events.resource_completed(implementation_resource)
+          events.resource_updated(new_resource, :create)
+          events.resource_completed(new_resource)
         end
 
         it "does not collect data about the nested resource" do
@@ -247,12 +246,12 @@ describe Chef::ResourceReporter do
       context "and a nested resource runs but is not updated" do
         before do
           implementation_resource = Chef::Resource::CookbookFile.new("/preseed-file.txt")
-          action_collection.resource_action_start(implementation_resource , :create)
-          action_collection.resource_current_state_loaded(implementation_resource, :create, implementation_resource)
-          action_collection.resource_up_to_date(implementation_resource, :create)
-          action_collection.resource_completed(implementation_resource)
-          action_collection.resource_updated(new_resource, :create)
-          action_collection.resource_completed(new_resource)
+          events.resource_action_start(implementation_resource , :create)
+          events.resource_current_state_loaded(implementation_resource, :create, implementation_resource)
+          events.resource_up_to_date(implementation_resource, :create)
+          events.resource_completed(implementation_resource)
+          events.resource_updated(new_resource, :create)
+          events.resource_completed(new_resource)
         end
 
         it "does not collect data about the nested resource" do
@@ -264,8 +263,8 @@ describe Chef::ResourceReporter do
         before do
           exception = Exception.new
           exception.set_backtrace(caller)
-          action_collection.resource_failed(new_resource, :create, exception)
-          action_collection.resource_completed(new_resource)
+          events.resource_failed(new_resource, :create, exception)
+          events.resource_completed(new_resource)
         end
 
         it "collects the resource as an updated resource" do
@@ -301,10 +300,10 @@ describe Chef::ResourceReporter do
         @execute_resource.name("sensitive-resource")
         @execute_resource.command('echo "password: SECRET"')
         @execute_resource.sensitive(true)
-        action_collection.resource_action_start(@execute_resource, :run)
-        action_collection.resource_current_state_loaded(@execute_resource, :run, current_resource)
-        action_collection.resource_updated(@execute_resource, :run)
-        action_collection.resource_completed(@execute_resource)
+        events.resource_action_start(@execute_resource, :run)
+        events.resource_current_state_loaded(@execute_resource, :run, current_resource)
+        events.resource_updated(@execute_resource, :run)
+        events.resource_completed(@execute_resource)
         run_status.stop_clock
         @report = resource_reporter.prepare_run_data
         @first_update_report = @report["resources"].first
@@ -326,10 +325,10 @@ describe Chef::ResourceReporter do
           allow(@bad_resource).to receive(:name).and_return(nil)
           allow(@bad_resource).to receive(:identity).and_return(nil)
           allow(@bad_resource).to receive(:path).and_return(nil)
-          action_collection.resource_action_start(@bad_resource, :create)
-          action_collection.resource_current_state_loaded(@bad_resource, :create, current_resource)
-          action_collection.resource_updated(@bad_resource, :create)
-          action_collection.resource_completed(@bad_resource)
+          events.resource_action_start(@bad_resource, :create)
+          events.resource_current_state_loaded(@bad_resource, :create, current_resource)
+          events.resource_updated(@bad_resource, :create)
+          events.resource_completed(@bad_resource)
           run_status.stop_clock
           @report = resource_reporter.prepare_run_data
           @first_update_report = @report["resources"].first
@@ -350,10 +349,10 @@ describe Chef::ResourceReporter do
           allow(@bad_resource).to receive(:name).and_return({ foo: :bar })
           allow(@bad_resource).to receive(:identity).and_return({ foo: :bar })
           allow(@bad_resource).to receive(:path).and_return({ foo: :bar })
-          action_collection.resource_action_start(@bad_resource, :create)
-          action_collection.resource_current_state_loaded(@bad_resource, :create, current_resource)
-          action_collection.resource_updated(@bad_resource, :create)
-          action_collection.resource_completed(@bad_resource)
+          events.resource_action_start(@bad_resource, :create)
+          events.resource_current_state_loaded(@bad_resource, :create, current_resource)
+          events.resource_updated(@bad_resource, :create)
+          events.resource_completed(@bad_resource)
           run_status.stop_clock
           @report = resource_reporter.prepare_run_data
           @first_update_report = @report["resources"].first
@@ -407,10 +406,10 @@ describe Chef::ResourceReporter do
         #    "status" : "success"
         #    "data" : ""
         # }
-        action_collection.resource_action_start(new_resource, :create)
-        action_collection.resource_current_state_loaded(new_resource, :create, current_resource)
-        action_collection.resource_updated(new_resource, :create)
-        action_collection.resource_completed(new_resource)
+        events.resource_action_start(new_resource, :create)
+        events.resource_current_state_loaded(new_resource, :create, current_resource)
+        events.resource_updated(new_resource, :create)
+        events.resource_completed(new_resource)
         run_status.stop_clock
         @report = resource_reporter.prepare_run_data
         @first_update_report = @report["resources"].first
@@ -557,10 +556,10 @@ describe Chef::ResourceReporter do
         @bad_resource = Chef::Resource::File.new("/tmp/a-file.txt")
         @bad_resource.cookbook_name = nil
 
-        action_collection.resource_action_start(@bad_resource, :create)
-        action_collection.resource_current_state_loaded(@bad_resource, :create, current_resource)
-        action_collection.resource_updated(@bad_resource, :create)
-        action_collection.resource_completed(@bad_resource)
+        events.resource_action_start(@bad_resource, :create)
+        events.resource_current_state_loaded(@bad_resource, :create, current_resource)
+        events.resource_updated(@bad_resource, :create)
+        events.resource_completed(@bad_resource)
         run_status.stop_clock
         @report = resource_reporter.prepare_run_data
         @first_update_report = @report["resources"].first
@@ -610,10 +609,10 @@ describe Chef::ResourceReporter do
 
         @new_state_resource = Chef::Resource::WithState.new("Stateful", run_context)
         @new_state_resource.state = "Running"
-        action_collection.resource_action_start(@new_state_resource, :create)
-        action_collection.resource_current_state_loaded(@new_state_resource, :create, @current_state_resource)
-        action_collection.resource_updated(@new_state_resource, :create)
-        action_collection.resource_completed(@new_state_resource)
+        events.resource_action_start(@new_state_resource, :create)
+        events.resource_current_state_loaded(@new_state_resource, :create, @current_state_resource)
+        events.resource_updated(@new_state_resource, :create)
+        events.resource_completed(@new_state_resource)
         run_status.stop_clock
         @report = resource_reporter.prepare_run_data
         @first_update_report = @report["resources"].first
@@ -737,9 +736,9 @@ describe Chef::ResourceReporter do
 
       it "updates the run document with resource updates at the end of the run" do
         # update some resources...
-        action_collection.resource_action_start(new_resource, :create)
-        action_collection.resource_current_state_loaded(new_resource, :create, current_resource)
-        action_collection.resource_updated(new_resource, :create)
+        events.resource_action_start(new_resource, :create)
+        events.resource_current_state_loaded(new_resource, :create, current_resource)
+        events.resource_updated(new_resource, :create)
 
         allow(resource_reporter).to receive(:end_time).and_return(end_time)
         @expected_data = resource_reporter.prepare_run_data

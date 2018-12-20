@@ -118,7 +118,7 @@ class Chef
       @run_status = run_status
     end
 
-    def converge_start(run_context)
+    def cookbook_compilation_start(run_context)
       run_context.action_collection = self
       # we fire the action_collection_registration event during the converge_start hook -- the magic of stack
       # frames means this should just work.  but maybe we need a way to schedule an event on the dispatcher to run

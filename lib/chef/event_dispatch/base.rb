@@ -163,6 +163,10 @@ class Chef
 
       ## TODO: add callbacks for overall cookbook eval start and complete.
 
+      # Called immediately after creating the run_context and before any cookbook compilation happens
+      def cookbook_compilation_start(run_context)
+      end
+
       # Called when library file loading starts
       def library_load_start(file_count)
       end
@@ -261,6 +265,10 @@ class Chef
 
       # Called when recipes have been loaded.
       def recipe_load_complete
+      end
+
+      # This is called after all cookbook compilation phases are completed.
+      def cookbook_compilation_complete(run_context)
       end
 
       # Called before convergence starts
